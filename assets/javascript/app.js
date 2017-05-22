@@ -84,19 +84,69 @@ winList = {
 	}
 }
 
+
+
 $('#addPlayer').on('click', function(){
 	event.preventDefault();
-
 	let name = $('#playerNameInput').val();
-	console.log(name);
 
-	$('#subHead').empty();
-	let newElem = $('<div>').addClass('center');
-	newElem.append($('<h5>').text('Welcome, ' + name + '!'));
-	newElem.append($('<p>').text('You are player 1!'));
-	$('#subHead').append(newElem);
-	$('#ply1Name').text(name);
-	buildButtons('player1',name);
+	function choosePlayerNumber (callback) {
+		database.ref().once("value").then(function(snap){
+			if (!snap.val().player1){
+				callback("player1")
+			} else if (!snap.val().player2){
+				callback("player2")
+			} else {
+				callback("max")
+			}
+		});
+	}
+
+	function setEnv (playerNumber) {
+		console.log('callback', playerNumber);
+		addPlayerToDB(playerNumber);
+		setPlayerElems(playerNumber);
+	}
+
+	function addPlayerToDB (plyNum) {
+		let player = database.ref("/curGame/"+plyNum).set({
+			name: name,
+			wins: 0,
+			losses: 0
+		})
+
+		plyerDBUpdate = {};
+		plyerDBUpdate['/'+plyNum] = true;
+		playerID = database.ref().update(plyerDBUpdate);
+
+		plyerDBUpdate['/'+plyNum] = false;
+		database.ref().onDisconnect().update(plyerDBUpdate);
+
+	}
+
+	function setPlayerElems (playNum) {
+		$('#subHead').empty();
+		let newElem = $('<div>').addClass('center');
+		newElem.append($('<h5>').text('Welcome, ' + name + '!'));
+		
+		//determine text for sub header
+		let welcomeText;
+		if (playNum === 'player1') {
+			welcomeText = 'You are player 1.'
+		} else if (playNum === 'player2') {
+			welcomeText = 'You are player 2.'
+		} else {
+			welcomeText = "max players!"
+		}
+
+		newElem.append($('<p>').text(welcomeText));
+		$('#subHead').append(newElem);
+		$('#'+playNum+'h5').text(name);
+		buildButtons(playNum,name);
+	}
+
+	choosePlayerNumber(setEnv);
+
 
 })
 
@@ -117,3 +167,4 @@ function buildButtons (playerNum, displayName) {
 		mainDiv.append(curRow.append(curBtn));		
 	})
 }
+
