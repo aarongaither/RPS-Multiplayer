@@ -1,170 +1,318 @@
-var config = {
-	apiKey: "AIzaSyAqi4CyjP649DPZbUisYpjhnjZGyHsf7tE",
-	authDomain: "rps-multi-41263.firebaseapp.com",
-	databaseURL: "https://rps-multi-41263.firebaseio.com",
-	projectId: "rps-multi-41263",
-	storageBucket: "rps-multi-41263.appspot.com",
-	messagingSenderId: "314062800387"
+//------------- Setup ----------------
+
+let config = {
+    apiKey: "AIzaSyAqi4CyjP649DPZbUisYpjhnjZGyHsf7tE",
+    authDomain: "rps-multi-41263.firebaseapp.com",
+    databaseURL: "https://rps-multi-41263.firebaseio.com",
+    projectId: "rps-multi-41263",
+    storageBucket: "rps-multi-41263.appspot.com",
+    messagingSenderId: "314062800387"
 };
 //init firebase
 firebase.initializeApp(config);
 
 // Create a variable to reference the database.
-var database = firebase.database();
+const database = firebase.database();
 
-// Link to Firebase Database for viewer tracking
-var connectionsRef = database.ref("/connections");
-var connectedRef = database.ref(".info/connected");
+//------------- DB listeners ------------
 
-
-// Add ourselves to presence list when online.
-connectedRef.on("value", function(snap) {
-
-  // If they are connected..
-  if (snap.val()) {
-  	console.log("conn",snap.val())
-    // Add user to the connections list.
-    let con = connectionsRef.push(true);
-    let id = con.key;
-    $("#conns").append($("<p>").text(id).attr("id", "player"));
-
-    // Remove user from the connection list when they disconnect.
-    con.onDisconnect().remove();
-  }
+//listen for state changes, if resolving game win, do tons of stuff
+database.ref('/curGame/state').on('value', function(snap) {
+    //localize state for sync ref
+    go.localState = snap.val();
+    if (go.localState === 'playerSelect') {
+        $('#info p').html('Waiting for players...')
+    } else if (go.localState === 'play') {
+        $('#info p').html('Waiting for each player to select a throw.')
+    } else if (go.localState === 'reveal'){
+        database.ref('/curGame').once('value', function(snap){
+            //grab both player objs
+            let p1 = snap.val().player1;
+            let p2 = snap.val().player2;
+            //reveal choices to players (dom)
+            go.revealChoices(p1.choice, p2.choice);
+            //figure out who won and lost return an obj, unless its a tie
+            let result = go.determineWinner(p1.choice, p2.choice)
+            //reveal to players the results (dom)
+            go.revealWinner(result);
+            //if the game is not a tie, update db with scores, db event will trigger page update
+            if (result !== 'Tie' && go.playerID === 1) {
+                go.updateScore(result)
+            }
+            //set brief timeout, then move to next round
+            setTimeout(go.resetRound, 4000);
+        })
+    }
 });
 
-
-// Number of online users is the number of objects in the presence list.
-connectionsRef.on("value", function(snap) {
-
-  // Display the viewer count in the html.
-  // The number of online users is the number of children in the connections list.
-  // $("#playerRow").text(snap.numChildren());
-});
-
-// func to compare and get result, print to console
-var checkForResult = function (chPly, chCmp) {
-  var player = choices.indexOf(chPly);
-  var comp = choices.indexOf(chCmp);
-  let n = choices.length;
-  let res = (n + player - comp) % n;
-  
-  if (res === 0) {
-  	console.log("Tie!");
-  } else if (res % 2 === 1) {
-  	console.log("You win!")
-  	console.log(winList[chPly][chCmp])
-  } else if (res % 2 === 0) {
-  	console.log("You Lose!")
-	console.log(winList[chCmp][chPly])
-  }
-}
-
-//phrases to display after results
-winList = {
-	rock : {
-		scissors : "Rock crushes Scissors.",
-		lizard : "Rock crushes Lizard."
-	},
-	paper : {
-		rock : "Paper covers Rock.",
-		spock : "Paper disproves Spock."
-	},
-	scissors : {
-		paper : "Scissors cuts Paper.",
-		lizard : "Scissors decapitate Lizard."
-	},
-	lizard : {
-		spock : "Lizard poisons Spock.",
-		paper : "Lizard eats Paper."
-	},
-	spock : {
-		scissors : "Spock smashes Scissors.",
-		rock : "Spock vaporizes Rock."
-	}
-}
-
-
-
-$('#addPlayer').on('click', function(){
-	event.preventDefault();
-	let name = $('#playerNameInput').val();
-
-	function choosePlayerNumber (callback) {
-		database.ref().once("value").then(function(snap){
-			if (!snap.val().player1){
-				callback("player1")
-			} else if (!snap.val().player2){
-				callback("player2")
-			} else {
-				callback("max")
-			}
-		});
-	}
-
-	function setEnv (playerNumber) {
-		console.log('callback', playerNumber);
-		addPlayerToDB(playerNumber);
-		setPlayerElems(playerNumber);
-	}
-
-	function addPlayerToDB (plyNum) {
-		let player = database.ref("/curGame/"+plyNum).set({
-			name: name,
-			wins: 0,
-			losses: 0
-		})
-
-		plyerDBUpdate = {};
-		plyerDBUpdate['/'+plyNum] = true;
-		playerID = database.ref().update(plyerDBUpdate);
-
-		plyerDBUpdate['/'+plyNum] = false;
-		database.ref().onDisconnect().update(plyerDBUpdate);
-
-	}
-
-	function setPlayerElems (playNum) {
-		$('#subHead').empty();
-		let newElem = $('<div>').addClass('center');
-		newElem.append($('<h5>').text('Welcome, ' + name + '!'));
-		
-		//determine text for sub header
-		let welcomeText;
-		if (playNum === 'player1') {
-			welcomeText = 'You are player 1.'
-		} else if (playNum === 'player2') {
-			welcomeText = 'You are player 2.'
-		} else {
-			welcomeText = "max players!"
-		}
-
-		newElem.append($('<p>').text(welcomeText));
-		$('#subHead').append(newElem);
-		$('#'+playNum+'h5').text(name);
-		buildButtons(playNum,name);
-	}
-
-	choosePlayerNumber(setEnv);
-
-
+//listen for player connections, then update page with names
+database.ref('/player1Conn').on('value', function(snap){
+    console.log(snap.val())
+    if (snap.val()) {
+        let header = $('#player1 h5');
+        database.ref('/curGame/player1').once("value", function(snap){
+            header.text(snap.val().name);
+        })
+    }
 })
 
-function buildButtons (playerNum, displayName) {
-	//set up some aliases
-	let btnsToMake = ['Rock','Paper','Scissors','Lizard','Spock'];
-	let btnClasses = 'waves-effect waves-light btn col s6 offset-s3';
-	let mainDiv = $('#'+playerNum)
-	//clear before adding anything
-	mainDiv.empty();
-	//make elements
-	mainDiv.append($('<h5>').addClass('center').text(displayName));
+//listen for player connections, then update page with names
+database.ref('/player2Conn').on('value', function(snap){
+    if (snap.val()) {
+        let header = $('#player2 h5');
+        database.ref('/curGame/player2').once("value", function(snap){
+            header.text(snap.val().name);
+        })
+    }
+})
 
-	btnsToMake.forEach(function(value, index){
-		//make a row and button, then append both to main
-		let curRow = $('<div>').addClass('row');
-		let curBtn = $('<button>').addClass(btnClasses).attr('type',value.toLowerCase()).text(value);
-		mainDiv.append(curRow.append(curBtn));		
-	})
+//score listeners to update page, an experiment with verbosity vs specificity :)
+database.ref('/curGame/player1/wins').on('value', function(snap){
+    $('#player1w').text(snap.val())
+})
+
+database.ref('/curGame/player1/losses').on('value', function(snap){
+    $('#player1l').text(snap.val())
+})
+
+database.ref('/curGame/player2/wins').on('value', function(snap){
+    $('#player2w').text(snap.val())
+})
+
+database.ref('/curGame/player2/losses').on('value', function(snap){
+    $('#player2l').text(snap.val())
+})
+
+//------------- Main Object -----------
+
+let go = {
+    playerID: 0,
+    localState: 'playerSelect',
+    choices: ['Rock', 'Paper', 'Scissors', 'Spock', 'Lizard'],
+    winList : {
+        //phrases to display after results
+        rock : {
+            scissors : "Rock crushes Scissors.",
+            lizard : "Rock crushes Lizard."
+        },
+        paper : {
+            rock : "Paper covers Rock.",
+            spock : "Paper disproves Spock."
+        },
+        scissors : {
+            paper : "Scissors cuts Paper.",
+            lizard : "Scissors decapitate Lizard."
+        },
+        lizard : {
+            spock : "Lizard poisons Spock.",
+            paper : "Lizard eats Paper."
+        },
+        spock : {
+            scissors : "Spock smashes Scissors.",
+            rock : "Spock vaporizes Rock."
+        }
+    },
+    revealChoices: function (ply1, ply2) {
+        let players = {
+            '#player1': ply1,
+            '#player2': ply2
+        };
+        Object.keys(players).forEach(function (key, value) {
+            let div = $(key+' .subCont');
+            //clear before adding anything
+            div.empty();
+            //make elements
+            let divChoice = $('<i>').addClass('fa fa-hand-'+players[key].toLowerCase()+'-o revealIcon').attr('aria-hidden','true');
+            div.append(divChoice)
+        })
+    },
+    determineWinner: function (ply1, ply2) {
+        //func to compare and get result
+        let p1 = this.choices.indexOf(ply1);
+        let p2 = this.choices.indexOf(ply2);
+        let n = this.choices.length;
+        let res = (n + p1 - p2) % n;
+        let message;
+        if (res === 0) {
+            return 'Tie'
+        } else if (res % 2 === 1) {
+            //player 1 wins
+            message = this.winList[ply1.toLowerCase()][ply2.toLowerCase()];
+            console.log(message)
+            return {winner:'player1', loser: 'player2', msg: message}
+        } else if (res % 2 === 0) {
+            //player 2 wins
+            message = this.winList[ply2.toLowerCase()][ply1.toLowerCase()];
+            console.log(message)
+            return {winner: 'player2', loser: 'player1', msg: message}
+        }
+    },
+    revealWinner: function (result) {
+        if (result.winner === 'player1') {
+            $('#info p').html("Player 1 wins!</br>"+result.msg)
+        } else if (result.winner === 'player2') {
+            $('#info p').html("Player 2 wins!</br>"+result.msg)
+        } else {
+            $('#info p').html("Tie!")
+        }
+    },
+    updateScore: function (result) {
+        function pushUpdate (winner, w, loser, l) {
+            database.ref('/curGame/'+winner).update({
+                wins: w
+            })
+            database.ref('/curGame/'+loser).update({
+                losses: l
+            })
+        }
+        database.ref('/curGame').once('value', function(snap){
+            let w = snap.val()[result.winner].wins + 1;
+            let l = snap.val()[result.loser].losses + 1;
+            console.log('update db')
+            console.log('-winner',result.winner, w)
+            console.log('-loser',result.loser, l)
+            pushUpdate(result.winner, w, result.loser, l);
+        })
+    },
+    resetRound: function () {
+        database.ref('/curGame').update({
+            state : 'play',
+            choices : 0
+        })
+        // empty play area, remake buttons for right player
+        $('.playerSection .subCont').empty();
+        buildButtons('player'+go.playerID);
+    }
 }
 
+function changeState(state) {
+    database.ref('/curGame').update({
+        state : state
+    })
+}
+
+//------------- button for player join and initial state logic pattern
+// its a mess, I would have refactored this given more time and no group project
+
+$('#addPlayer').on('click', function(){
+    event.preventDefault();
+
+    function choosePlayerNumber (callback) {
+        database.ref().once("value").then(function(snap){
+            if (!snap.val().player1Conn){
+                callback("player1")
+                go.playerID = 1;
+            } else if (!snap.val().player2Conn){
+                callback("player2")
+                go.playerID = 2;
+                changeState('play')      
+            } else {
+                callback("max");
+            }
+        });
+    }
+
+    function setEnv (playerNumber) {
+        console.log('callback', playerNumber);
+        addPlayerToDB(playerNumber);
+        setPlayerElems(playerNumber);
+    }
+
+    function addPlayerToDB (plyNum) {
+        if (plyNum !== 'max') {
+            let player = database.ref("/curGame/"+plyNum).set({
+                name: name,
+                wins: 0,
+                losses: 0,
+                choice: ""
+            })
+
+            plyerDBUpdate = {};
+            plyerDBUpdate['/'+plyNum+'Conn'] = true;
+            playerID = database.ref().update(plyerDBUpdate);
+
+            plyerDBUpdate['/'+plyNum+'Conn'] = false;
+            database.ref().onDisconnect().update(plyerDBUpdate);
+            database.ref('/curGame').onDisconnect(function(){
+                go.playerID = 0;
+            }).update({
+                state : "playerSelect",
+                choices : 0
+            })
+            database.ref("/curGame/"+plyNum).onDisconnect().remove()
+        }
+    }
+
+    function setPlayerElems (playNum) {
+        $('#subHead').empty();
+        let newElem = $('<div>').addClass('center');
+        newElem.append($('<h5>').text('Welcome, ' + name + '!'));
+        
+        //determine text for sub header
+        let welcomeText;
+        if (playNum === 'player1') {
+            welcomeText = 'You are player 1.'
+        } else if (playNum === 'player2') {
+            welcomeText = 'You are player 2.'
+        } else {
+            welcomeText = "Sorry, maximum players reached. Multiple game instances not yet implemented."
+        }
+
+        newElem.append($('<p>').text(welcomeText));
+        $('#subHead').append(newElem);
+        $('#'+playNum+' h5').text(name);
+        buildButtons(playNum,name);
+    }
+
+    let name = $('#playerNameInput').val().trim();
+    if (name !== '') {
+        choosePlayerNumber(setEnv);
+    }
+})
+
+
+
+function buildButtons (playerNum) {
+    //set up some aliases
+    let btnClasses = 'waves-effect waves-light btn col s6 offset-s3';
+    let btnDiv = $('#'+playerNum+' .subCont');
+    //clear before adding anything
+    btnDiv.empty();
+
+    go.choices.forEach(function(value, index){
+        //make a row and button, then append both to main
+        let curRow = $('<div>').addClass('row');
+        let icon = $('<i>').addClass('fa fa-hand-'+value.toLowerCase()+'-o').attr('aria-hidden','true');
+        let curBtn = $('<button>').addClass(btnClasses).attr('type',value).text(value+' ');
+        curBtn.on('click', function(){
+            let ancestor = $(this).closest('.card-panel');
+            console.log('click', ancestor.attr('player') )
+            if (go.localState === 'play') {
+                manageChoice(ancestor.attr('player'), $(this).attr('type'))
+                $('#'+playerNum+' .subCont').empty();
+            }
+        })
+        btnDiv.append(curRow.append(curBtn.append(icon)));
+    })
+}
+
+function manageChoice (plyNum, plyChoice) {
+    function updateChoice (c) {
+        database.ref('/curGame/'+plyNum).update({
+            choice : plyChoice
+        })
+        database.ref('/curGame').update({
+            choices : c + 1
+        })
+    }
+
+    database.ref('/curGame/choices').once('value', function(snap){
+        let choices = snap.val();
+        if (choices === 0 ) {
+            updateChoice(choices);
+        } else if (choices === 1 ) {
+            updateChoice(choices);
+            changeState('reveal');
+        }
+    })
+}
