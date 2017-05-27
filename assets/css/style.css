@@ -6,8 +6,12 @@
 	font-size: 180px !important;
 }
 
+#info .section {
+	height: 150px;
+}
+
 #chatBox {
-	height: 175px;
+	height: 160px;
 	text-align: left;
 	overflow-y: scroll;
 }
