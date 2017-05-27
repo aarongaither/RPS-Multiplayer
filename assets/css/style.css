@@ -5,3 +5,26 @@
 .revealIcon {
 	font-size: 180px !important;
 }
+
+#chatBox {
+	height: 175px;
+	text-align: left;
+	overflow-y: scroll;
+}
+
+#sendChat {
+	margin: 25px 5px 0 0;
+	font-size: 10px;
+}
+
+#chatInput {
+	margin-left: 5px;
+}
+
+#replyIcon {
+	font-size: 10px;
+}
+
+.input-field.col #chatInput + label {
+	left: 1.75rem;
+}

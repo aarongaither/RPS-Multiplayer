@@ -270,8 +270,6 @@ $('#addPlayer').on('click', function(){
     }
 })
 
-
-
 function buildButtons (playerNum) {
     //set up some aliases
     let btnClasses = 'waves-effect waves-light btn col s6 offset-s3';
@@ -316,3 +314,25 @@ function manageChoice (plyNum, plyChoice) {
         }
     })
 }
+
+//chat stuff
+$('#sendChat').on('click', function(){
+    event.preventDefault();
+    let msg = $('#chatInput').val().trim();
+    $('#chatInput').val('')
+    if (go.playerID !== 0 && msg !== ''){
+        database.ref('/curGame/player'+go.playerID).once('value', function(snap){
+            let name = snap.val().name;
+            let chat = database.ref('/chat').push()
+            chat.set({
+                name : name,
+                msg : msg
+            })
+        })
+    }
+})
+
+database.ref('/chat').on('child_added', function (snap) {
+    $('#chatBox').prepend($('<div>').text(snap.val().name+': '+snap.val().msg));
+    database.ref('/chat').onDisconnect().remove();
+})
